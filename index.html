@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IKMASS TWEBOON</title>
+    <!-- SDK Firebase dari CDN resmi -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f2f5;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            max-width: 400px;
+            width: 100%;
+            text-align: center;
+            position: relative;
+        }
+        h2 { margin-bottom: 5px; color: #333; }
+        p { color: #666; font-size: 14px; margin-bottom: 20px; }
+        
+        .canvas-container {
+            position: relative;
+            width: 270px;
+            height: 480px;
+            margin: 0 auto 15px auto;
+            border: 2px dashed #2563eb;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #fafafa;
+            touch-action: none;
+            cursor: grab;
+        }
+        .canvas-container:active { cursor: grabbing; }
+        canvas { width: 100%; height: 100%; display: block; }
+        .input-group { margin-bottom: 15px; text-align: left; }
+        label { display: block; font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #444; }
+        input[type="file"], input[type="text"], select {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .hint-text { font-size: 12px; color: #2563eb; margin-bottom: 15px; font-style: italic; }
+        .btn {
+            background-color: #2563eb;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            width: 100%;
+            border-radius: 6px;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-bottom: 10px;
+        }
+        .btn:hover { background-color: #1d4ed8; }
+        .btn:disabled { background-color: #93c5fd; cursor: not-allowed; }
+        
+        .admin-btn-float {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: #e2e8f0;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            font-weight: bold;
+            color: #475569;
+        }
+        .admin-panel {
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: left;
+            display: none;
+        }
+        .admin-panel h3 { margin-top: 0; color: #1e40af; font-size: 16px; }
+        .btn-danger { background-color: #dc2626; width: auto; padding: 5px 10px; font-size: 12px; }
+        .btn-danger:hover { background-color: #b91c1c; }
+        .template-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+            margin-bottom: 8px;
+            background: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            border: 1px solid #e2e8f0;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <button id="adminToggleBtn" class="admin-btn-float">⚙️ Admin</button>
+
+        <h2>IKMASS TWEBOON</h2>
+        <p>Pilih template ukuran HP, upload foto, dan sesuaikan posisinya!</p>
+
+        <!-- PANEL ADMIN (UPLOAD FILE LANGSUNG) -->
+        <div id="adminPanel" class="admin-panel">
+            <h3>Panel Admin Firebase</h3>
+            <div class="input-group">
+                <label>Nama Template Baru:</label>
+                <input type="text" id="newTemplateName" placeholder="Contoh: Tadabbur Alam">
+            </div>
+            <div class="input-group">
+                <label>Pilih File Template (PNG Transparan):</label>
+                <input type="file" id="newTemplateFile" accept="image/png">
+            </div>
+            <button id="saveTemplateBtn" class="btn" style="background-color: #16a34a;">Upload ke Firebase</button>
+            
+            <hr style="border:0; border-top:1px solid #bfdbfe; margin: 15px 0;">
+            <label style="margin-bottom: 8px;">Daftar Template di Database:</label>
+            <div id="templateListContainer" style="max-height: 120px; overflow-y: auto;">Memuat data...</div>
+            <button id="logoutAdminBtn" class="btn btn-danger" style="width:100%; margin-top:10px;">Keluar Mode Admin</button>
+        </div>
+
+        <!-- PILIHAN TEMPLATE -->
+        <div class="input-group">
+            <label for="templateSelect">Pilih Template:</label>
+            <select id="templateSelect"><option>Memuat template...</option></select>
+        </div>
+
+        <!-- Area Preview Ukuran Layar HP (1080 x 1920) -->
+        <div class="canvas-container" id="canvasContainer">
+            <canvas id="photoCanvas" width="1080" height="1920"></canvas>
+        </div>
+        <div class="hint-text">💡 Geser foto pakai 1 jari, cubit (2 jari) untuk zoom in/out!</div>
+
+        <div class="input-group">
+            <label for="uploadImage">Pilih Foto Kamu:</label>
+            <input type="file" id="uploadImage" accept="image/*">
+        </div>
+
+        <button id="downloadBtn" class="btn" disabled>Unduh Hasil (Ukuran HP)</button>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyAzXTJlhnwaOPQvGp1UNAMi3ZTboYb-c9k",
+            authDomain: "si-angkatan-2026.firebaseapp.com",
+            projectId: "si-angkatan-2026",
+            storageBucket: "si-angkatan-2026.firebasestorage.app",
+            messagingSenderId: "29273270632",
+            appId: "1:29273270632:web:9b9a4969e9656e2c3e0edd"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        const ADMIN_PASSWORD = "adminrahasia123"; 
+
+        const templateSelect = document.getElementById('templateSelect');
+        const uploadInput = document.getElementById('uploadImage');
+        const canvas = document.getElementById('photoCanvas');
+        const ctx = canvas.getContext('2d');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const canvasContainer = document.getElementById('canvasContainer');
+
+        const adminToggleBtn = document.getElementById('adminToggleBtn');
+        const adminPanel = document.getElementById('adminPanel');
+        const newTemplateName = document.getElementById('newTemplateName');
+        const newTemplateFile = document.getElementById('newTemplateFile');
+        const saveTemplateBtn = document.getElementById('saveTemplateBtn');
+        const templateListContainer = document.getElementById('templateListContainer');
+        const logoutAdminBtn = document.getElementById('logoutAdminBtn');
+
+        const canvasWidth = 1080;
+        const canvasHeight = 1920;
+
+        let userImg = null;
+        let currentTemplateImg = new Image();
+        let templates = [];
+
+        let imgX = 0;
+        let imgY = 0;
+        let imgScale = 1;
+        let isDragging = false;
+        let startX = 0;
+        let startY = 0;
+        let initialPinchDistance = null;
+
+        function fetchTemplatesFromFirebase() {
+            db.collection("twibbon_templates").orderBy("createdAt", "desc").onSnapshot((snapshot) => {
+                templates = [];
+                snapshot.forEach((doc) => {
+                    templates.push({ id: doc.id, ...doc.data() });
+                });
+
+                if (templates.length === 0) {
+                    templates.push({
+                        id: "default-1",
+                        name: "Template Default Layar HP",
+                        url: "https://i.ibb.co.com/6X5L4qP/template-sample.png"
+                    });
+                }
+
+                renderTemplateOptions();
+                if (adminPanel.style.display === 'block') {
+                    renderAdminList();
+                }
+            }, (error) => {
+                console.error("Gagal mengambil data dari Firebase:", error);
+            });
+        }
+
+        function renderTemplateOptions() {
+            templateSelect.innerHTML = '';
+            templates.forEach(t => {
+                let opt = document.createElement('option');
+                opt.value = t.url;
+                opt.textContent = t.name;
+                templateSelect.appendChild(opt);
+            });
+            if(templates.length > 0) {
+                loadTemplate(templates[0].url);
+            }
+        }
+
+        function loadTemplate(url) {
+            currentTemplateImg = new Image();
+            currentTemplateImg.crossOrigin = "anonymous";
+            currentTemplateImg.onload = function() {
+                drawCanvas();
+            };
+            currentTemplateImg.src = url;
+        }
+
+        function renderAdminList() {
+            templateListContainer.innerHTML = '';
+            templates.forEach((t) => {
+                let div = document.createElement('div');
+                div.className = 'template-item';
+                div.innerHTML = `
+                    <span>${t.name}</span>
+                    <button class="btn btn-danger" onclick="deleteTemplate('${t.id}')">Hapus</button>
+                `;
+                templateListContainer.appendChild(div);
+            });
+        }
+
+        fetchTemplatesFromFirebase();
+
+        templateSelect.addEventListener('change', function(e) {
+            loadTemplate(e.target.value);
+        });
+
+        function drawCanvas() {
+            ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+            
+            if (userImg) {
+                ctx.save();
+                ctx.translate(canvasWidth / 2 + imgX, canvasHeight / 2 + imgY);
+                ctx.scale(imgScale, imgScale);
+                
+                let w = canvasWidth;
+                let h = (userImg.height / userImg.width) * w;
+                ctx.drawImage(userImg, -w / 2, -h / 2, w, h);
+                
+                ctx.restore();
+            } else {
+                ctx.fillStyle = "#cbd5e1";
+                ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+                ctx.fillStyle = "#64748b";
+                ctx.font = "bold 50px sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText("Belum ada foto", canvasWidth / 2, canvasHeight / 2);
+            }
+
+            if (currentTemplateImg && currentTemplateImg.complete && currentTemplateImg.naturalWidth !== 0) {
+                ctx.drawImage(currentTemplateImg, 0, 0, canvasWidth, canvasHeight);
+            }
+        }
+
+        uploadInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    userImg = new Image();
+                    userImg.onload = function() {
+                        imgX = 0;
+                        imgY = 0;
+                        imgScale = 1;
+
+                        drawCanvas();
+                        downloadBtn.disabled = false;
+                    }
+                    userImg.src = event.target.result;
+                }
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // Kontrol Sentuhan (Touch & Mouse)
+        function getTouchDistance(touches) {
+            let dx = touches[0].clientX - touches[1].clientX;
+            let dy = touches[0].clientY - touches[1].clientY;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        canvasContainer.addEventListener('mousedown', (e) => {
+            if (!userImg) return;
+            isDragging = true;
+            startX = e.clientX - imgX;
+            startY = e.clientY - imgY;
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            imgX = e.clientX - startX;
+            imgY = e.clientY - startY;
+            drawCanvas();
+        });
+
+        window.addEventListener('mouseup', () => { isDragging = false; });
+
+        canvasContainer.addEventListener('touchstart', (e) => {
+            if (!userImg) return;
+            if (e.touches.length === 1) {
+                isDragging = true;
+                startX = e.touches[0].clientX - imgX;
+                startY = e.touches[0].clientY - imgY;
+            } else if (e.touches.length === 2) {
+                isDragging = false;
+                initialPinchDistance = getTouchDistance(e.touches);
+            }
+        });
+
+        canvasContainer.addEventListener('touchmove', (e) => {
+            if (!userImg) return;
+            if (isDragging && e.touches.length === 1) {
+                imgX = e.touches[0].clientX - startX;
+                imgY = e.touches[0].clientY - startY;
+                drawCanvas();
+            } else if (e.touches.length === 2 && initialPinchDistance) {
+                let currentDistance = getTouchDistance(e.touches);
+                let scaleFactor = currentDistance / initialPinchDistance;
+                imgScale *= scaleFactor;
+                imgScale = Math.max(0.3, Math.min(5, imgScale));
+                initialPinchDistance = currentDistance;
+                drawCanvas();
+            }
+            e.preventDefault();
+        }, { passive: false });
+
+        canvasContainer.addEventListener('touchend', (e) => {
+            isDragging = false;
+            if (e.touches.length < 2) { initialPinchDistance = null; }
+        });
+
+        // Admin Panel & Upload File Langsung ke Firebase (Otomatis Kompres & Jaga Transparansi)
+        adminToggleBtn.addEventListener('click', function() {
+            let pass = prompt("Masukkan Password Master Admin:");
+            if (pass === ADMIN_PASSWORD) {
+                adminPanel.style.display = 'block';
+                adminToggleBtn.style.display = 'none';
+                renderAdminList();
+            } else if (pass !== null) { alert("Password salah!"); }
+        });
+
+        logoutAdminBtn.addEventListener('click', function() {
+            adminPanel.style.display = 'none';
+            adminToggleBtn.style.display = 'block';
+        });
+
+        saveTemplateBtn.addEventListener('click', function() {
+            let name = newTemplateName.value.trim();
+            let file = newTemplateFile.files[0];
+
+            if (!name || !file) {
+                alert("Harap isi nama template dan pilih file gambarnya!");
+                return;
+            }
+
+            saveTemplateBtn.disabled = true;
+            saveTemplateBtn.textContent = "Mengompres & Mengunggah...";
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvasResize = document.createElement('canvas');
+                    canvasResize.width = 450;  // Ukuran dioptimalkan agar aman dan ringan di Firebase
+                    canvasResize.height = 800;
+                    
+                    const ctxResize = canvasResize.getContext('2d');
+                    ctxResize.clearRect(0, 0, 450, 800);
+                    ctxResize.drawImage(img, 0, 0, 450, 800);
+                    
+                    let compressedPNG = canvasResize.toDataURL('image/png');
+
+                    db.collection("twibbon_templates").add({
+                        name: name,
+                        url: compressedPNG,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    })
+                    .then(() => {
+                        alert("Template berhasil di-upload!");
+                        newTemplateName.value = '';
+                        newTemplateFile.value = '';
+                        saveTemplateBtn.disabled = false;
+                        saveTemplateBtn.textContent = "Upload ke Firebase";
+                    })
+                    .catch((error) => {
+                        alert("Gagal mengunggah: " + error.message);
+                        saveTemplateBtn.disabled = false;
+                        saveTemplateBtn.textContent = "Upload ke Firebase";
+                    });
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+
+        window.deleteTemplate = function(id) {
+            if (templates.length <= 1) { alert("Minimal harus ada 1 template tersisa!"); return; }
+            if (confirm("Yakin ingin menghapus template ini?")) {
+                db.collection("twibbon_templates").doc(id).delete().then(() => {
+                    alert("Template berhasil dihapus!");
+                }).catch((error) => {
+                    alert("Gagal menghapus: " + error.message);
+                });
+            }
+        };
+
+        downloadBtn.addEventListener('click', function() {
+            const link = document.createElement('a');
+            link.download = 'twibbon-ikmass-story.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        });
+    </script>
+
+</body>
+</html>
